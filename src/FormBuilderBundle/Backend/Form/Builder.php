@@ -5,6 +5,7 @@ namespace FormBuilderBundle\Backend\Form;
 use FormBuilderBundle\Configuration\Configuration;
 use FormBuilderBundle\Manager\TemplateManager;
 use FormBuilderBundle\Registry\OptionsTransformerRegistry;
+use FormBuilderBundle\Registry\ConditionalLogicRegistry;
 use FormBuilderBundle\Storage\FormFieldInterface;
 use FormBuilderBundle\Storage\FormInterface;
 use FormBuilderBundle\Transformer\OptionsTransformerInterface;
@@ -32,6 +33,10 @@ class Builder
      * @var OptionsTransformerRegistry
      */
     protected $optionsTransformerRegistry;
+    /**
+     * @var ConditionalLogicRegistry
+     */
+    protected $conditionalLogicRegistry;
 
     /**
      * Builder constructor.
@@ -40,17 +45,20 @@ class Builder
      * @param TemplateManager            $templateManager
      * @param Translator                 $translator
      * @param OptionsTransformerRegistry $optionsTransformerRegistry
+     * @param ConditionalLogicRegistry   $conditionalLogicRegistry
      */
     public function __construct(
         Configuration $configuration,
         TemplateManager $templateManager,
         Translator $translator,
-        OptionsTransformerRegistry $optionsTransformerRegistry
+        OptionsTransformerRegistry $optionsTransformerRegistry,
+        ConditionalLogicRegistry $conditionalLogicRegistry
     ) {
         $this->configuration = $configuration;
         $this->templateManager = $templateManager;
         $this->translator = $translator;
         $this->optionsTransformerRegistry = $optionsTransformerRegistry;
+        $this->conditionalLogicRegistry = $conditionalLogicRegistry;
     }
 
     /**
@@ -78,7 +86,9 @@ class Builder
         $data['fields'] = $this->generateExtJsFields($fieldData);
         $data['fields_structure'] = $this->generateExtJsFormTypesStructure();
         $data['fields_template'] = $this->getFormTypeTemplates();
-        $data['validation_constraints'] = $this->getValidationConstraints();
+        $data['validation_constraints'] = $this->getTranslatedValidationConstraints();
+        $data['conditional_logic'] = $this->generateConditionalLogicStructure($form->getConditionalLogic());
+        $data['conditional_logic_store'] = $this->generateConditionalLogicStore();
 
         return $data;
     }
@@ -92,7 +102,7 @@ class Builder
     {
         $formFields = [];
         foreach ($fields as $field) {
-            $formFields[] = $this->transformOptions($field, TRUE);
+            $formFields[] = $this->transformOptions($field, true);
         }
 
         return $formFields;
@@ -122,6 +132,10 @@ class Builder
 
         foreach ($formTypes as $formType => $formTypeConfiguration) {
 
+            if (!$this->isAllowedFormType($formType)) {
+                continue;
+            }
+
             $beConfig = $formTypeConfiguration['backend'];
             $fieldStructureElement = [
                 'type'                 => $formType,
@@ -133,7 +147,7 @@ class Builder
 
             $groupIndex = array_search($this->getFormTypeGroup($formType, $beConfig), array_column($fieldStructure, 'id'));
 
-            if ($groupIndex !== FALSE) {
+            if ($groupIndex !== false) {
                 $fieldStructure[$groupIndex]['fields'][] = $fieldStructureElement;
             } else {
                 $groupIndex = array_search('other_fields', array_column($fieldStructure, 'id'));
@@ -142,6 +156,51 @@ class Builder
         }
 
         return $fieldStructure;
+    }
+
+    /**
+     * @param $conditionalData
+     * @return array
+     */
+    private function generateConditionalLogicStructure($conditionalData)
+    {
+        $formConditionalLogicData = [];
+        if (!empty($conditionalData)) {
+            $formConditionalLogicData['cl'] = $conditionalData;
+        }
+
+        return $formConditionalLogicData;
+    }
+
+    /**
+     * @return array
+     */
+    private function generateConditionalLogicStore()
+    {
+        $actions = [];
+        foreach ($this->conditionalLogicRegistry->getAllConfiguration('action') as $actionName => $action) {
+            $actions[] = [
+                'identifier' => $actionName,
+                'name'       => $action['name'],
+                'icon'       => $action['icon'],
+            ];
+        }
+
+        $conditions = [];
+        foreach ($this->conditionalLogicRegistry->getAllConfiguration('condition') as $conditionName => $condition) {
+            $conditions[] = [
+                'identifier' => $conditionName,
+                'name'       => $condition['name'],
+                'icon'       => $condition['icon'],
+            ];
+        }
+
+        $formConditionalLogicData = [
+            'actions'    => $actions,
+            'conditions' => $conditions,
+        ];
+
+        return $formConditionalLogicData;
     }
 
     /**
@@ -162,13 +221,15 @@ class Builder
         return $groupData;
     }
 
-    private function getValidationConstraints()
+    /**
+     * @return array
+     */
+    private function getTranslatedValidationConstraints()
     {
-        $constraints = $this->configuration->getConfig('validation_constraints');
+        $constraints = $this->configuration->getAvailableConstraints();
 
         $constraintData = [];
         foreach ($constraints as $constraintId => &$constraint) {
-            $constraint['id'] = $constraintId;
             $constraint['label'] = $this->translate($constraint['label']);
             $constraintData[] = $constraint;
         }
@@ -213,7 +274,7 @@ class Builder
 
         foreach ($fieldConfigFields['fields'] as $fieldId => $field) {
 
-            if ($field === FALSE) {
+            if ($field === false) {
                 continue;
             }
 
@@ -297,6 +358,7 @@ class Builder
 
     /**
      * Get translated Form Type Templates
+     *
      * @return array
      */
     private function getFormTypeTemplates()
@@ -309,6 +371,31 @@ class Builder
         }
 
         return $typeTemplates;
+    }
+
+    /**
+     * @param string $formType
+     * @return bool
+     */
+    private function isAllowedFormType($formType = null)
+    {
+        $adminSettings = $this->configuration->getConfig('admin');
+        $activeFields = $adminSettings['active_elements']['fields'];
+        $inactiveFields = $adminSettings['inactive_elements']['fields'];
+
+        if (empty($activeFields) && empty($inactiveFields)) {
+            return true;
+        }
+
+        if (!empty($inactiveFields) && in_array($formType, $inactiveFields)) {
+            return false;
+        }
+
+        if (!empty($activeFields) && !in_array($formType, $activeFields)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -331,7 +418,7 @@ class Builder
      *
      * @return mixed
      */
-    private function transformOptions($fieldData, $reverse = FALSE)
+    private function transformOptions($fieldData, $reverse = false)
     {
         $formTypes = $this->configuration->getConfig('types');
 
@@ -359,7 +446,7 @@ class Builder
                 $transformer = $fieldData['options'][$optionName] = $this->optionsTransformerRegistry
                     ->get($optionConfig['options_transformer']);
 
-                if ($reverse === FALSE) {
+                if ($reverse === false) {
                     $fieldData['options'][$optionName] = $transformer->transform($optionValue, $optionConfig);
                 } else {
                     $fieldData['options'][$optionName] = $transformer->reverseTransform($optionValue, $optionConfig);

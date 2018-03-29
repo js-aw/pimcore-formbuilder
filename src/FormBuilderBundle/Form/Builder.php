@@ -116,9 +116,12 @@ class Builder
             $formAttributes['novalidate'] = 'novalidate';
         }
 
+        $formAttributes['class'] = 'formbuilder';
+        $formAttributes['data-template'] = $formOptions['form_template'];
+
         if ($formConfig['useAjax'] === TRUE) {
             $formAttributes['data-ajax-structure-url'] = $this->router->generate('form_builder.controller.ajax.url_structure');
-            $formAttributes['class'] = 'formbuilder ajax-form';
+            $formAttributes['class'] = $formAttributes['class'] . ' ajax-form';
         }
 
         //@todo: implement inline functionality.
@@ -129,10 +132,11 @@ class Builder
             DynamicFormType::class,
             $formEntity,
             [
-                'method'          => $formConfig['method'],
-                'action'          => $formConfig['action'] === '/' ? $request->getUri() : $formConfig['action'],
-                'current_form_id' => $formEntity->getId(),
-                'attr'            => $formAttributes,
+                'method'            => $formConfig['method'],
+                'action'            => $formConfig['action'] === '/' ? $request->getUri() : $formConfig['action'],
+                'current_form_id'   => $formEntity->getId(),
+                'conditional_logic' => $formEntity->getConditionalLogic(),
+                'attr'              => $formAttributes,
             ]
         );
 

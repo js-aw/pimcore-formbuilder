@@ -3,19 +3,24 @@
 namespace FormBuilderBundle\EventSubscriber;
 
 use FormBuilderBundle\Configuration\Configuration;
+use FormBuilderBundle\Event\Form\PostSetDataEvent;
 use FormBuilderBundle\Event\Form\PreSetDataEvent;
 use FormBuilderBundle\Event\Form\PreSubmitEvent;
 use FormBuilderBundle\FormBuilderEvents;
 use FormBuilderBundle\Storage\FormFieldDynamicInterface;
+use FormBuilderBundle\Storage\FormInterface as FormBuilderFormInterface;
 use FormBuilderBundle\Storage\FormFieldInterface;
 use FormBuilderBundle\Stream\PackageStream;
+use FormBuilderBundle\Validation\ConditionalLogic\Dispatcher\Dispatcher;
 use Pimcore\Model\Asset;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Form\FormEvent;
 use Symfony\Component\Form\FormEvents;
 use Symfony\Component\Form\FormInterface;
+use Symfony\Component\Form\FormRegistryInterface;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\Validator\Constraints\NotBlank;
 
 class FormBuilderSubscriber implements EventSubscriberInterface
 {
@@ -45,6 +50,16 @@ class FormBuilderSubscriber implements EventSubscriberInterface
     protected $session;
 
     /**
+     * @var Dispatcher
+     */
+    protected $dispatcher;
+
+    /**
+     * @var FormRegistryInterface
+     */
+    protected $formRegistry;
+
+    /**
      * @var
      */
     private $availableConstraints;
@@ -61,19 +76,25 @@ class FormBuilderSubscriber implements EventSubscriberInterface
      * @param PackageStream            $packageStream
      * @param EventDispatcherInterface $eventDispatcher
      * @param SessionInterface         $session
+     * @param Dispatcher               $dispatcher
+     * @param FormRegistryInterface    $formRegistry
      */
     public function __construct(
         Configuration $configuration,
         PackageStream $packageStream,
         EventDispatcherInterface $eventDispatcher,
-        SessionInterface $session
+        SessionInterface $session,
+        Dispatcher $dispatcher,
+        FormRegistryInterface $formRegistry
     ) {
         $this->configuration = $configuration;
         $this->packageStream = $packageStream;
         $this->eventDispatcher = $eventDispatcher;
         $this->session = $session;
+        $this->dispatcher = $dispatcher;
+        $this->formRegistry = $formRegistry;
 
-        $this->availableConstraints = $this->configuration->getConfig('validation_constraints');
+        $this->availableConstraints = $this->configuration->getAvailableConstraints();
         $this->availableFormTypes = $this->configuration->getConfig('types');
     }
 
@@ -112,22 +133,12 @@ class FormBuilderSubscriber implements EventSubscriberInterface
      */
     public function onPostSetData(FormEvent $event)
     {
+        $postSetDataEvent = new PostSetDataEvent($event, $this->formOptions);
+        $this->eventDispatcher->dispatch(FormBuilderEvents::FORM_POST_SET_DATA, $postSetDataEvent);
+
         $form = $event->getForm();
         $formEntity = $event->getData();
-
-        $orderedFields = $formEntity->getFields();
-        usort($orderedFields, function ($a, $b) {
-            return ($a->getOrder() < $b->getOrder()) ? -1 : 1;
-        });
-
-        /** @var FormFieldInterface $field */
-        foreach ($orderedFields as $field) {
-            if ($field instanceof FormFieldDynamicInterface) {
-                $this->addDynamicField($form, $field);
-            } else {
-                $this->addFormBuilderField($form, $field);
-            }
-        }
+        $this->populateForm($form, $formEntity, TRUE);
     }
 
     /**
@@ -137,6 +148,10 @@ class FormBuilderSubscriber implements EventSubscriberInterface
     {
         $preSubmitEvent = new PreSubmitEvent($event, $this->formOptions);
         $this->eventDispatcher->dispatch(FormBuilderEvents::FORM_PRE_SUBMIT, $preSubmitEvent);
+
+        $form = $event->getForm();
+        $formEntity = $form->getData();
+        $this->populateForm($form, $formEntity, FALSE, $event->getData());
     }
 
     /**
@@ -177,32 +192,114 @@ class FormBuilderSubscriber implements EventSubscriberInterface
     }
 
     /**
+     * @param FormInterface            $form
+     * @param FormBuilderFormInterface $formEntity
+     * @param bool                     $initial
+     * @param array                    $data
+     */
+    private function populateForm(FormInterface $form, FormBuilderFormInterface $formEntity, $initial = FALSE, $data = [])
+    {
+        $orderedFields = $formEntity->getFields();
+        usort($orderedFields, function ($a, $b) {
+            return ($a->getOrder() < $b->getOrder()) ? -1 : 1;
+        });
+
+        $data = $this->prefillData($orderedFields, $data);
+
+        /** @var FormFieldInterface $field */
+        foreach ($orderedFields as $field) {
+            if ($field instanceof FormFieldDynamicInterface) {
+                // do not initialize dynamic fields twice since there is also no conditional logic!
+                if ($initial === FALSE && !$field->isUpdated()) {
+                    continue;
+                }
+                $this->addDynamicField($form, $field, $data);
+            } else {
+                // since we apply conditional logic here, we need to add fields multiple times (post-set-data and pre-submit). :(
+                $this->addFormBuilderField($form, $field, $data);
+            }
+        }
+    }
+
+    /**
      * @param FormInterface      $form
      * @param FormFieldInterface $field
+     * @param mixed              $formData
      */
-    private function addFormBuilderField(FormInterface $form, FormFieldInterface $field)
+    private function addFormBuilderField(FormInterface $form, FormFieldInterface $field, $formData = NULL)
     {
         $options = $field->getOptions();
         $optional = $field->getOptional();
+        $object = $this->formRegistry->getType($this->availableFormTypes[$field->getType()]['class'])->getOptionsResolver();
+        $availableOptions = $object->getDefinedOptions();
+
+        $constraints = [];
+        $constraintNames = [];
+        $templateClasses = [];
 
         //set optional template
         if (isset($optional['template'])) {
-            $options['attr']['data-template'] = $optional['template'];
+            $templateClasses[] = $optional['template'];
         }
 
-        $constraints = [];
-        foreach ($field->getConstraints() as $constraint) {
+        //tweak preferred choice options.
+        if ($field->getType() === 'choice') {
+            if (
+                $options['multiple'] === FALSE
+                && isset($options['data'])
+                && is_array($options['data'])
+                && !empty($options['data'])
+            ) {
+                $options['data'] = $options['data'][0];
+            }
+        }
 
-            if (!isset($this->availableConstraints[$constraint['type']])) {
-                continue;
+        if (in_array('constraints', $availableOptions)) {
+            $constraints = $this->dispatcher->runFieldDispatcher('constraints', [
+                'formData'         => $formData,
+                'field'            => $field,
+                'conditionalLogic' => $form->getData()->getConditionalLogic()
+            ], [
+                'availableConstraints' => $this->availableConstraints
+            ]);
+
+            // add field constraints to data attribute since we need them for the frontend cl applier.
+            foreach ($field->getConstraints() as $constraint) {
+                $constraintNames[] = $constraint['type'];
             }
 
-            $class = $this->availableConstraints[$constraint['type']]['class'];
-            $constraints[] = new $class();
+            if (!empty($constraints)) {
+                $options['constraints'] = $constraints;
+            }
         }
 
-        if (!empty($constraints)) {
-            $options['constraints'] = $constraints;
+        $options['attr']['data-initial-constraints'] = join(',', $constraintNames);
+
+        if (in_array('required', $availableOptions)) {
+            $options['required'] = count(
+                    array_filter($constraints, function ($constraint) {
+                        return $constraint instanceof NotBlank;
+                    })
+                ) === 1;
+        }
+
+        if (in_array('conditionalLogic', $availableOptions)) {
+            //$options['conditionalLogic'] = NULL;
+        }
+
+        //classes
+        $classes = $this->dispatcher->runFieldDispatcher('form_type_classes', [
+            'formData'         => $formData,
+            'field'            => $field,
+            'conditionalLogic' => $form->getData()->getConditionalLogic()
+        ]);
+
+        if (!empty($classes)) {
+            $templateClasses = array_merge($templateClasses, $classes);
+        }
+
+        if (!empty($templateClasses)) {
+            $options['attr']['data-template'] = join(' ', $templateClasses);
         }
 
         $form->add(
@@ -215,8 +312,9 @@ class FormBuilderSubscriber implements EventSubscriberInterface
     /**
      * @param FormInterface             $form
      * @param FormFieldDynamicInterface $field
+     * @param mixed                     $formData
      */
-    private function addDynamicField(FormInterface $form, FormFieldDynamicInterface $field)
+    private function addDynamicField(FormInterface $form, FormFieldDynamicInterface $field, $formData = NULL)
     {
         $options = $field->getOptions();
         $optional = $field->getOptional();
@@ -231,5 +329,30 @@ class FormBuilderSubscriber implements EventSubscriberInterface
             $field->getType(),
             $options
         );
+    }
+
+    /**
+     * Add pre-filled data to value store
+     *
+     * @param $fields
+     * @param $data
+     * @return mixed
+     */
+    private function prefillData($fields, $data)
+    {
+        /** @var FormFieldInterface $field */
+        foreach ($fields as $field) {
+
+            if (!empty($data[$field->getName()])) {
+                continue;
+            }
+
+            $fieldOptions = $field->getOptions();
+            if (isset($fieldOptions['data'])) {
+                $data[$field->getName()] = $fieldOptions['data'];
+            }
+        }
+
+        return $data;
     }
 }

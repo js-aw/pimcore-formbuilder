@@ -14,10 +14,18 @@ form_builder:
             bootstrap_3_layout:
                 value: 'bootstrap_3_layout.html.twig'
                 label: 'form_builder_form_template.bootstrap_3_layout'
-                default: true
+                default: false
             bootstrap_3_horizontal_layout:
                 value: 'bootstrap_3_horizontal_layout.html.twig'
                 label: 'form_builder_form_template.bootstrap_3_horizontal_layout'
+                default: false
+            bootstrap_4_layout:
+                value: 'bootstrap_4_layout.html.twig'
+                label: 'form_builder_form_template.bootstrap_4_layout'
+                default: true
+            bootstrap_4_horizontal_layout:
+                value: 'bootstrap_4_horizontal_layout.html.twig'
+                label: 'form_builder_form_template.bootstrap_4_horizontal_layout'
                 default: false
         field:
             templates:
@@ -29,6 +37,42 @@ form_builder:
         active_elements:
             fields: []
 
+    conditional_logic:
+        action:
+            toggleElement:
+                class: 'FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ToggleElementAction'
+                name: 'form_builder.cl.action.toggle_element'
+                icon: 'form_builder_cl_toggle_element'
+            constraintsAdd:
+                class: 'FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ConstraintsAddAction'
+                name: 'form_builder.cl.action.constraints_add'
+                icon: 'form_builder_cl_constraints_add'
+            constraintsRemove:
+                class: 'FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ConstraintsRemoveAction'
+                name: 'form_builder.cl.action.constraints_remove'
+                icon: 'form_builder_cl_constraints_remove'
+            changeValue:
+                name: 'form_builder.cl.action.change_value'
+                icon: 'form_builder_cl_change_value'
+            triggerEvent:
+                name: 'form_builder.cl.action.trigger_event'
+                icon: 'form_builder_cl_trigger_event'
+            toggleClass:
+                class: 'FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ToggleClassAction'
+                name: 'form_builder.cl.action.toggle_class'
+                icon: 'form_builder_cl_toggle_class'
+            toggleAvailability:
+                name: 'form_builder.cl.action.toggle_availability'
+                icon: 'form_builder_cl_toggle_availability'
+            mailBehaviour:
+                class: 'FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\MailBehaviourAction'
+                name: 'form_builder.cl.action.mail_behaviour'
+                icon: 'form_builder_cl_mail_behaviour'
+        condition:
+            elementValue:
+                class: 'FormBuilderBundle\Validation\ConditionalLogic\Rule\Condition\ElementValueCondition'
+                name: 'form_builder.cl.condition.element_value'
+                icon: 'form_builder_cl_element_value'
 imports:
     - { resource: '../backend/base_config.yml' }
     - { resource: '../types/types.yml' }

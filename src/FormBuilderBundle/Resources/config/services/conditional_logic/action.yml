@@ -1,0 +1,16 @@
+services:
+
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: true
+
+    FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ConstraintsAddAction: ~
+
+    FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ConstraintsRemoveAction: ~
+
+    FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ToggleClassAction: ~
+
+    FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\ToggleElementAction: ~
+
+    FormBuilderBundle\Validation\ConditionalLogic\Rule\Action\MailBehaviourAction: ~

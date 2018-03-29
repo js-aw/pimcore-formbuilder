@@ -19,6 +19,9 @@ form_builder:
         hidden_fields:
             label: 'form_builder_type_group.hidden_fields'
             icon_class: form_builder_icon_container
+        date_time_fields:
+            label: 'form_builder_type_group.date_time_fields'
+            icon_class: form_builder_icon_container
         buttons:
             label: 'form_builder_type_group.buttons'
             icon_class: form_builder_icon_container
@@ -45,20 +48,20 @@ form_builder:
                 type: textfield
                 label: 'form_builder_type_field_base.email_label'
                 config: ~
-            options.data:
+            options.value:
                 display_group_id: base
                 type: textfield
                 label: 'form_builder_type_field_base.value'
+                config: ~
+            options.data:
+                display_group_id: base
+                type: textfield
+                label: 'form_builder_type_field_base.data'
                 config: ~
             options.help_text:
                 display_group_id: base
                 type: textfield
                 label: 'form_builder_type_field_base.help_text'
-                config: ~
-            options.required:
-                display_group_id: base
-                type: checkbox
-                label: 'form_builder_type_field_base.required'
                 config: ~
             options.attr:
                 display_group_id: attributes
@@ -98,4 +101,48 @@ form_builder:
         email:
             class: Symfony\Component\Validator\Constraints\Email
             label: 'form_builder_validation_constraint.email'
+            icon_class: form_builder_icon_validation
+        length:
+            class: Symfony\Component\Validator\Constraints\Length
+            label: 'form_builder_validation_constraint.length'
+            icon_class: form_builder_icon_validation
+        url:
+            class: Symfony\Component\Validator\Constraints\Url
+            label: 'form_builder_validation_constraint.url'
+            icon_class: form_builder_icon_validation
+        regex:
+            class: Symfony\Component\Validator\Constraints\Regex
+            label: 'form_builder_validation_constraint.regex'
+            icon_class: form_builder_icon_validation
+        ip:
+            class: Symfony\Component\Validator\Constraints\Ip
+            label: 'form_builder_validation_constraint.ip'
+            icon_class: form_builder_icon_validation
+        range:
+            class: Symfony\Component\Validator\Constraints\Range
+            label: 'form_builder_validation_constraint.range'
+            icon_class: form_builder_icon_validation
+        card_scheme:
+            class: Symfony\Component\Validator\Constraints\CardScheme
+            label: 'form_builder_validation_constraint.card_scheme'
+            icon_class: form_builder_icon_validation
+        bic:
+            class: Symfony\Component\Validator\Constraints\Bic
+            label: 'form_builder_validation_constraint.bic'
+            icon_class: form_builder_icon_validation
+        iban:
+            class: Symfony\Component\Validator\Constraints\Iban
+            label: 'form_builder_validation_constraint.iban'
+            icon_class: form_builder_icon_validation
+        date:
+            class: Symfony\Component\Validator\Constraints\Date
+            label: 'form_builder_validation_constraint.date'
+            icon_class: form_builder_icon_validation
+        date_time:
+            class: Symfony\Component\Validator\Constraints\DateTime
+            label: 'form_builder_validation_constraint.date_time'
+            icon_class: form_builder_icon_validation
+        time:
+            class: Symfony\Component\Validator\Constraints\Time
+            label: 'form_builder_validation_constraint.time'
             icon_class: form_builder_icon_validation

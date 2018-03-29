@@ -9,7 +9,7 @@ class FormField implements FormFieldInterface
     /**
      * @var bool
      */
-    protected $isDynamic = FALSE;
+    protected $update = FALSE;
 
     /**
      * @var Translator
@@ -51,11 +51,19 @@ class FormField implements FormFieldInterface
      */
     private $optional = [];
 
-    public function __construct($isDynamic = FALSE)
+    /**
+     * FormField constructor.
+     *
+     * @param bool $update
+     */
+    public function __construct($update = FALSE)
     {
-        $this->isDynamic = $isDynamic;
+        $this->update = $update;
     }
 
+    /**
+     * @param Translator $translator
+     */
     public function setTranslator(Translator $translator)
     {
         $this->translator = $translator;
@@ -138,6 +146,14 @@ class FormField implements FormFieldInterface
     }
 
     /**
+     * @return bool
+     */
+    public function isUpdated()
+    {
+        return $this->update;
+    }
+
+    /**
      * @param array $options
      */
     public function setOptions($options = [])
@@ -147,6 +163,9 @@ class FormField implements FormFieldInterface
         });
     }
 
+    /**
+     * @return array
+     */
     public function getOptions()
     {
         return $this->options;
@@ -205,7 +224,7 @@ class FormField implements FormFieldInterface
             $array[ltrim($key, '_')] = $value;
         }
 
-        $removeKeys = ['translator', 'isDynamic'];
+        $removeKeys = ['translator', 'update'];
         return array_diff_key($array, array_flip($removeKeys));
     }
 }

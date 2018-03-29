@@ -100,6 +100,10 @@ class FormFactory implements FormFactoryInterface {
             $formEntity->setConfig($data['config']);
         }
 
+        if (!empty($data['conditional_logic'])) {
+            $formEntity->setConditionalLogic($data['conditional_logic']);
+        }
+
         if (!empty($data['fields'])) {
             $fields = [];
             foreach ($data['fields'] as $field) {
@@ -114,7 +118,7 @@ class FormFactory implements FormFactoryInterface {
                     $formField->$setter($fieldValue);
                 }
 
-                $fields[] = $formField;
+                $fields[$field['name']] = $formField;
             }
 
             $formEntity->setFields($fields);

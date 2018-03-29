@@ -2,6 +2,7 @@
 
 namespace FormBuilderBundle\Storage;
 
+use FormBuilderBundle\Configuration\Configuration;
 use Pimcore\Model;
 use Pimcore\Translation\Translator;
 
@@ -45,6 +46,11 @@ class Form extends Model\AbstractModel implements FormInterface
      * @var array
      */
     public $config = [];
+
+    /**
+     * @var array
+     */
+    public $conditionalLogic = [];
 
     /**
      * @var array
@@ -235,22 +241,67 @@ class Form extends Model\AbstractModel implements FormInterface
     }
 
     /**
+     * @return array
+     */
+    public function getConditionalLogic()
+    {
+        return $this->conditionalLogic;
+    }
+
+    /**
+     * @param $config
+     *
+     * @return $this
+     */
+    public function setConditionalLogic($config)
+    {
+        $this->conditionalLogic = $config;
+        return $this;
+    }
+
+    /**
      * @param       $name
      * @param       $type
      * @param       $options
      * @param array $optional
-     *
      * @return $this
      * @throws \Exception
      */
     public function addDynamicField($name, $type, $options, $optional = [])
     {
-        if(isset($this->fields[$name])) {
-            throw new \Exception(sprintf('"%s" as form field name is already in use', $name));
+        if(in_array($name, Configuration::INVALID_FIELD_NAMES)) {
+            throw new \Exception(sprintf('\'%s\' is a reserved form field name used by the form builder bundle and cannot be used.', $name));
         }
 
-        $d = new FormFieldDynamic($name, $type, $options, $optional);
-        $this->fields[$name] = $d;
+        $update = FALSE;
+        if(isset($this->fields[$name])) {
+            if(!$this->fields[$name] instanceof FormFieldDynamicInterface) {
+                throw new \Exception(sprintf('"%s" as field name is already used by form builder fields.', $name));
+            } else {
+                $update = TRUE;
+            }
+        }
+
+        $dynamicField = new FormFieldDynamic($name, $type, $options, $optional, $update);
+        $this->fields[$name] = $dynamicField;
+        return $this;
+    }
+
+    /**
+     * @param $name
+     * @return $this
+     * @throws \Exception
+     */
+    public function removeDynamicField($name)
+    {
+        if(!isset($this->fields[$name])) {
+            throw new \Exception(sprintf('cannot remove dynamic field, "%s" does not exists', $name));
+        }
+
+        if(isset($this->fields[$name]) && $this->fields[$name] instanceof FormFieldDynamicInterface) {
+            unset($this->fields[$name]);
+        }
+
         return $this;
     }
 
@@ -322,7 +373,7 @@ class Form extends Model\AbstractModel implements FormInterface
     }
 
     /**
-     * @return mixed
+     * @return array
      */
     public function getData()
     {

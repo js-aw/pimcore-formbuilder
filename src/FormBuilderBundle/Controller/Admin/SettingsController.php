@@ -5,6 +5,7 @@ namespace FormBuilderBundle\Controller\Admin;
 use FormBuilderBundle\Backend\Form\Builder;
 use FormBuilderBundle\Configuration\Configuration;
 use FormBuilderBundle\Manager\FormManager;
+use FormBuilderBundle\Registry\ChoiceBuilderRegistry;
 use Pimcore\Bundle\AdminBundle\Controller\AdminController;
 use Pimcore\Model\Element\AbstractElement;
 use Pimcore\Model\Element\Service;
@@ -53,8 +54,25 @@ class SettingsController extends AdminController
     {
         /** @var Configuration $configuration */
         $configuration = $this->container->get(Configuration::class);
+        $settings = $configuration->getConfigArray();
+        $settings['forbidden_form_field_names'] = Configuration::INVALID_FIELD_NAMES;
+        return $this->json(['settings' => $settings]);
+    }
 
-        return $this->json(['settings' => $configuration->getConfigArray()]);
+    /**
+     * @param Request $request
+     *
+     * @return JsonResponse
+     */
+    public function getDynamicChoiceBuilderAction(Request $request)
+    {
+        $registry = $this->container->get(ChoiceBuilderRegistry::class);
+        $services = $registry->getAll();
+        $data = [];
+        foreach ($services as $identifier => $service) {
+            $data[] = ['label' => $service['label'], 'value' => $identifier];
+        }
+        return $this->json($data);
     }
 
     /**
@@ -81,7 +99,10 @@ class SettingsController extends AdminController
             $form = $formManager->getById($id);
             $data['data'] = $backendFormBuilder->generateExtJsForm($form);
         } catch (\Exception $e) {
-            $data = ['success' => FALSE, 'message' => $e->getMessage() . ' (' . $e->getFile() . ': ' . $e->getLine() . ')'];
+            $data = [
+                'success' => FALSE,
+                'message' => $e->getMessage() . ' (' . $e->getFile() . ': ' . $e->getLine() . ')'
+            ];
         }
 
         return $this->json($data);
@@ -172,6 +193,10 @@ class SettingsController extends AdminController
         $formName = $request->get('form_name');
         $formConfig = json_decode($request->get('form_config'), TRUE);
         $formFields = json_decode($request->get('form_fields'), TRUE);
+        $formConditionalLogic = json_decode($request->get('form_cl'), TRUE);
+        if (isset($formConditionalLogic['cl'])) {
+            $formConditionalLogic = $formConditionalLogic['cl'];
+        }
 
         if ($formName != $storedFormName) {
             $formName = $this->getSaveName($formName);
@@ -179,10 +204,11 @@ class SettingsController extends AdminController
         }
 
         $data = [
-            'form_name'   => $formName,
-            //'form_date'   => time(),
-            'form_fields' => $backendFormBuilder->generateStoreFields($formFields),
-            'form_config' => $formConfig,
+            'form_name'              => $formName,
+            //'form_date'            => time(),
+            'form_fields'            => $backendFormBuilder->generateStoreFields($formFields),
+            'form_config'            => $formConfig,
+            'form_conditional_logic' => $formConditionalLogic,
         ];
 
         $formEntity = $formManager->save($data, $id);

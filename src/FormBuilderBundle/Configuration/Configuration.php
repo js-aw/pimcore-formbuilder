@@ -6,19 +6,33 @@ use Symfony\Component\Filesystem\Filesystem;
 
 class Configuration
 {
-    const STATE_DEFAULT_VALUES = [
-        'forceStart' => FALSE,
-        'forceStop'  => FALSE,
-        'running'    => FALSE,
-        'started'    => NULL,
-        'finished'   => NULL
-    ];
+    const SYSTEM_CONFIG_DIR_PATH = PIMCORE_PRIVATE_VAR . '/bundles/FormBuilderBundle';
 
     const SYSTEM_CONFIG_FILE_PATH = PIMCORE_PRIVATE_VAR . '/bundles/FormBuilderBundle/config.yml';
 
     const STORE_PATH = PIMCORE_PRIVATE_VAR . '/bundles/FormBuilderBundle/forms';
 
     const IMPORT_PATH = PIMCORE_PRIVATE_VAR . '/bundles/FormBuilderBundle/import';
+
+    const INVALID_FIELD_NAMES = [
+        'name',
+        'date',
+        'inputusername',
+        'formid',
+        'abstract',
+        'class',
+        'data',
+        'folder',
+        'list',
+        'permissions',
+        'resource',
+        'concrete',
+        'interface',
+        'service',
+        'fieldcollection',
+        'localizedfield',
+        'objectbrick'
+    ];
 
     /**
      * @var Filesystem
@@ -52,10 +66,10 @@ class Configuration
         $this->backendConfig = [
             'backend_base_field_type_groups' => $config['backend_base_field_type_groups'],
             'backend_base_field_type_config' => $config['backend_base_field_type_config'],
-            'backend_field_type_config' => $config['backend_field_type_config']
+            'backend_field_type_config'      => $config['backend_field_type_config']
         ];
 
-        unset($config['backend_base_field_type_groups'],$config['backend_base_field_type_config'],$config['backend_field_type_config']);
+        unset($config['backend_base_field_type_groups'], $config['backend_base_field_type_config'], $config['backend_field_type_config']);
 
         $this->config = $config;
     }
@@ -84,6 +98,70 @@ class Configuration
     public function getConfig($slot)
     {
         return $this->config[$slot];
+    }
+
+    /**
+     * @return array
+     */
+    public function getAvailableConstraints()
+    {
+        $constraints = $this->config['validation_constraints'];
+
+        $constraintData = [];
+        $invalidProperties = ['payload'];
+
+        foreach ($constraints as $constraintId => &$constraint) {
+            $constraint['id'] = $constraintId;
+            $constraintClass = $constraint['class'];
+
+            try {
+                $refClass = new \ReflectionClass($constraintClass);
+            } catch (\Exception $e) {
+                continue;
+            }
+
+            $defaultProperties = $refClass->getDefaultProperties();
+            $constraintConfig = [];
+            foreach ($refClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $refProperty) {
+                $propertyName = $refProperty->getName();
+
+                if (in_array($propertyName, $invalidProperties)) {
+                    continue;
+                }
+
+                if (isset($defaultProperties[$propertyName])) {
+                    $defaultValue = $defaultProperties[$propertyName];
+                    $type = gettype($defaultValue);
+                } else {
+                    $defaultValue = null;
+                    $type = 'string';
+                }
+
+                if ($defaultValue === null || in_array(gettype($defaultValue), ['string', 'boolean', 'integer'])) {
+                    $constraintConfig[] = [
+                        'name'         => $propertyName,
+                        'type'         => $type,
+                        'defaultValue' => $defaultValue
+                    ];
+                }
+            }
+
+            $constraint['config'] = $constraintConfig;
+            $constraintData[$constraintId] = $constraint;
+
+        }
+
+        return $constraintData;
+    }
+
+    /**
+     * @param $type
+     *
+     * @return mixed
+     */
+    public function getFieldTypeConfig($type)
+    {
+        return $this->config['types'][$type];
     }
 
     /**

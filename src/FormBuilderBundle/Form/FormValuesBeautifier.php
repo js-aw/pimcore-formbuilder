@@ -6,7 +6,12 @@ use FormBuilderBundle\Storage\FormInterface as FormBuilderFormInterface;
 use FormBuilderBundle\Storage\FormFieldDynamicInterface;
 use FormBuilderBundle\Storage\FormFieldInterface;
 use Pimcore\Translation\Translator;
+use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
+use Symfony\Component\Form\Extension\Core\Type\CountryType;
+use Symfony\Component\Form\Extension\Core\Type\DateTimeType;
+use Symfony\Component\Form\Extension\Core\Type\TimeType;
 use Symfony\Component\Form\FormInterface;
+use Symfony\Component\Intl\Intl;
 
 /**
  * @method getProperty($option)
@@ -34,17 +39,69 @@ class FormValuesBeautifier
      * @param FormInterface $formField
      * @param string        $locale
      *
-     * @return mixed
+     * @return string|array
      */
     public function getFieldValue($value, $formField, $locale)
     {
-        if ($formField->getConfig()->hasOption('choices')) {
+        if (empty($value)) {
+            return $value;
+        }
+
+        $fieldType = $formField->getConfig()->getType()->getInnerType();
+
+        if ($value instanceof \DateTime) {
+            if (class_exists('IntlDateFormatter')) {
+                $calendar = 'gregorian';
+                $formatValues = [
+                    'none'   => \IntlDateFormatter::NONE,
+                    'short'  => \IntlDateFormatter::SHORT,
+                    'medium' => \IntlDateFormatter::MEDIUM,
+                    'long'   => \IntlDateFormatter::LONG,
+                    'full'   => \IntlDateFormatter::FULL,
+                ];
+
+                $dateFormat = 'medium';
+                $timeFormat = 'none';
+                if ($fieldType instanceof TimeType) {
+                    $dateFormat = 'none';
+                }
+                if ($fieldType instanceof DateTimeType || $fieldType instanceof TimeType) {
+                    $timeFormat = 'medium';
+                }
+
+                $formatter = \IntlDateFormatter::create(
+                    $locale,
+                    $formatValues[$dateFormat],
+                    $formatValues[$timeFormat],
+                    \IntlTimeZone::createTimeZone($value->getTimezone()->getName()),
+                    'gregorian' === $calendar ? \IntlDateFormatter::GREGORIAN : \IntlDateFormatter::TRADITIONAL,
+                    null
+                );
+                return $formatter->format($value->getTimestamp());
+            }
+
+            $format = 'm/d/y H:i:s';
+            return $value->format($format);
+
+        }
+
+        if ($fieldType instanceof CountryType) {
+            if (is_array($value)) {
+                $choices = [];
+                foreach ($value as $val) {
+                    $choices[] = Intl::getRegionBundle()->getCountryName($val, $locale);
+                }
+            } else {
+                $choices = Intl::getRegionBundle()->getCountryName($value, $locale);
+            }
+            return $choices;
+        } elseif ($fieldType instanceof ChoiceType) {
             $choices = $formField->getConfig()->getOption('choices');
             $arrayIterator = new \RecursiveArrayIterator($choices);
             $choices = [];
             foreach (new \RecursiveIteratorIterator($arrayIterator) as $label => $key) {
                 if ((is_array($value) && isset(array_flip($value)[$key])) || $value === $key) {
-                    $choices[] = $this->translator->trans($label, [], NULL, $locale);
+                    $choices[] = $this->translator->trans($label, [], null, $locale);
                 }
             }
 
@@ -117,11 +174,11 @@ class FormValuesBeautifier
 
         return [
             'label'       => isset($fieldOptions['label']) && !empty($fieldOptions['label'])
-                ? $this->translator->trans($fieldOptions['label'], [], NULL, $locale)
+                ? $this->translator->trans($fieldOptions['label'], [], null, $locale)
                 : $field->getName(),
             'email_label' => isset($optionalOptions['email_label']) && !empty($optionalOptions['email_label'])
-                ? $this->translator->trans($optionalOptions['email_label'], [], NULL, $locale)
-                : NULL,
+                ? $this->translator->trans($optionalOptions['email_label'], [], null, $locale)
+                : null,
             'value'       => $this->getFieldValue($formEntity->getFieldValue($field->getName()), $formField, $locale),
         ];
     }
@@ -136,34 +193,32 @@ class FormValuesBeautifier
      */
     private function beautifyDynamicField(FormFieldDynamicInterface $field, FormBuilderFormInterface $formEntity, FormInterface $formField, $locale)
     {
-        $label = $formField->getConfig()->hasOption('label') ? $formField->getConfig()->hasOption('label') : $field->getName();
+        $label = $formField->getConfig()->hasOption('label') ? $formField->getConfig()->getOption('label') : $field->getName();
         $optionalOptions = $field->getOptional();
 
         $valueTransformer = isset($optionalOptions['email_value_transformer']) && is_callable($optionalOptions['email_value_transformer'])
             ? $optionalOptions['email_value_transformer']
-            : FALSE;
+            : false;
 
-        $value = FALSE;
+        $value = false;
         $fieldValue = $formEntity->getFieldValue($field->getName());
 
-        if ($valueTransformer === FALSE) {
+        if ($valueTransformer === false) {
             $value = $this->getFieldValue($fieldValue, $formField, $locale);
-        } else if ($valueTransformer instanceof \Closure) {
+        } elseif ($valueTransformer instanceof \Closure) {
             $value = call_user_func_array($valueTransformer, [$formField, $fieldValue, $locale]);
-        } else if (is_array($valueTransformer)) {
+        } elseif (is_array($valueTransformer)) {
             $value = call_user_func_array($valueTransformer, [$formField, $fieldValue, $locale]);
         }
 
         return [
             'label'       => isset($label) && !empty($label)
-                ? $this->translator->trans($label, [], NULL, $locale)
+                ? $this->translator->trans($label, [], null, $locale)
                 : $label,
             'email_label' => isset($optionalOptions['email_label']) && !empty($optionalOptions['email_label'])
-                ? $this->translator->trans($optionalOptions['email_label'], [], NULL, $locale)
-                : NULL,
+                ? $this->translator->trans($optionalOptions['email_label'], [], null, $locale)
+                : null,
             'value'       => $value
-
         ];
     }
-
 }
